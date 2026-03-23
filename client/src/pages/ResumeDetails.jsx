@@ -76,15 +76,45 @@ const ResumeDetails = () => {
   };
 
   const handleAnalyze = async () => {
+    if (!id || analyzing) return;
+    
     try {
       setAnalyzing(true);
+      toast.showSuccess('Starting analysis... This may take a minute. Please wait.');
+      
+      // Call analyze endpoint directly
       const response = await api.post(`/resume/analyze/${id}`);
-      if (response.data.success) {
-        setResume(response.data.resume);
-        toast.showSuccess('Resume analyzed successfully!');
+      
+      // Verify response structure
+      if (response.data && response.data.success && response.data.resume) {
+        const analyzedData = response.data.resume;
+        
+        // Ensure analyzed flag and atsScore are present
+        if (analyzedData.analyzed && analyzedData.atsScore !== undefined) {
+          // Immediately update state with response data
+          setResume(analyzedData);
+          toast.showSuccess('Resume analyzed successfully!');
+          return; // Exit early if successful
+        }
+      }
+      
+      // If initial response doesn't have complete data, refetch
+      const freshResponse = await api.get(`/resume/${id}`);
+      if (freshResponse.data && freshResponse.data.resume) {
+        const freshData = freshResponse.data.resume;
+        if (freshData.analyzed && freshData.atsScore !== undefined) {
+          setResume(freshData);
+          toast.showSuccess('Resume analyzed successfully!');
+        } else {
+          toast.showError('Analysis in progress. Please wait a moment and refresh.');
+        }
+      } else {
+        toast.showError('Unable to retrieve analysis results.');
       }
     } catch (error) {
-      toast.showError(error.response?.data?.message || 'Failed to analyze resume');
+      console.error('Analysis error:', error);
+      const message = error.response?.data?.message || error.message || 'Failed to analyze resume';
+      toast.showError(message);
     } finally {
       setAnalyzing(false);
     }
@@ -210,22 +240,25 @@ const ResumeDetails = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className={`text-sm font-medium mb-2 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-                  Resume Not Analyzed Yet
+                  {analyzing ? 'Analyzing Your Resume' : 'Resume Not Analyzed Yet'}
                 </p>
                 <p className={`text-sm ${isDark ? 'text-gray-500' : 'text-gray-700'}`}>
-                  Click the button to analyze your resume and get an ATS score
+                  {analyzing 
+                    ? 'AI is analyzing your resume. This may take 30-60 seconds. Please wait and do not leave this page.'
+                    : 'Click the button to analyze your resume and get an ATS score'
+                  }
                 </p>
               </div>
               <Button
                 variant="primary"
                 disabled={analyzing}
                 onClick={handleAnalyze}
-                className="flex items-center gap-2"
+                className="flex items-center gap-2 whitespace-nowrap"
               >
                 {analyzing ? (
                   <>
                     <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                    Analyzing...
+                    <span>Analyzing...</span>
                   </>
                 ) : (
                   <>

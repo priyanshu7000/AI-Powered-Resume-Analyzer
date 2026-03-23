@@ -91,15 +91,21 @@ const resumeSlice = createSlice({
       })
       .addCase(analyzeResume.fulfilled, (state, action) => {
         state.loading = false;
-        state.currentResume = action.payload;
-        const index = state.resumes.findIndex((r) => r._id === action.payload._id);
-        if (index !== -1) {
-          state.resumes[index] = action.payload;
+        state.error = null;
+        if (action.payload) {
+          state.currentResume = action.payload;
+          const index = state.resumes.findIndex((r) => r._id === action.payload._id);
+          if (index !== -1) {
+            state.resumes[index] = action.payload;
+          } else {
+            state.resumes.unshift(action.payload);
+          }
         }
       })
       .addCase(analyzeResume.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
+        state.currentResume = null;
       });
 
     // Get All
