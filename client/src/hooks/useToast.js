@@ -1,26 +1,55 @@
-import { useCallback } from 'react';
-import toast from 'react-hot-toast';
+/**
+ * useToast Hook
+ * Global toast notification management
+ * Provides convenience methods for showing different toast types
+ * 
+ * @hook
+ * @example
+ * const toast = useToast();
+ * toast.showSuccess('Operation completed');
+ * toast.showError('An error occurred');
+ */
+const useToast = () => {
+  const showSuccess = (message, duration = 4000) => {
+    if (window.__toastManager) {
+      return window.__toastManager.showSuccess(message, duration);
+    }
+    console.warn('ToastContainer not mounted');
+  };
 
-export const useToast = () => {
-  const showSuccess = useCallback((message) => {
-    toast.success(message, {
-      duration: 3000,
-      position: 'top-right',
-    });
-  }, []);
+  const showError = (message, duration = 5000) => {
+    if (window.__toastManager) {
+      return window.__toastManager.showError(message, duration);
+    }
+    console.warn('ToastContainer not mounted');
+  };
 
-  const showError = useCallback((message) => {
-    toast.error(message, {
-      duration: 3000,
-      position: 'top-right',
-    });
-  }, []);
+  const showInfo = (message, duration = 4000) => {
+    if (window.__toastManager) {
+      return window.__toastManager.showInfo(message, duration);
+    }
+    console.warn('ToastContainer not mounted');
+  };
 
-  const showLoading = useCallback((message) => {
-    return toast.loading(message, {
-      position: 'top-right',
-    });
-  }, []);
+  const showWarning = (message, duration = 4000) => {
+    if (window.__toastManager) {
+      return window.__toastManager.showWarning(message, duration);
+    }
+    console.warn('ToastContainer not mounted');
+  };
 
-  return { showSuccess, showError, showLoading };
+  const showLoading = (message = 'Loading...', duration = 0) => {
+    return showInfo(message, duration);
+  };
+
+  return {
+    showSuccess,
+    showError,
+    showInfo,
+    showWarning,
+    showLoading,
+  };
 };
+
+export { useToast };
+export default useToast;
