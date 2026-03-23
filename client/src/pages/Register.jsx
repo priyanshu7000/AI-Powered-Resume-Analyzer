@@ -6,6 +6,7 @@ import Input from '../components/Input';
 import Button from '../components/Button';
 import { useToast } from '../hooks/useToast';
 import { validateEmail, validatePassword } from '../utils/helpers';
+import { ERROR_MESSAGES } from '../constants/errorMessages';
 
 const Register = () => {
   const [formData, setFormData] = useState({ name: '', email: '', password: '', confirmPassword: '' });
@@ -19,12 +20,29 @@ const Register = () => {
 
   const validate = () => {
     const newErrors = {};
-    if (!formData.name) newErrors.name = 'Name is required';
-    if (!formData.email) newErrors.email = 'Email is required';
-    else if (!validateEmail(formData.email)) newErrors.email = 'Invalid email';
-    if (!formData.password) newErrors.password = 'Password is required';
-    else if (!validatePassword(formData.password)) newErrors.password = 'Password must be at least 6 characters';
-    if (formData.password !== formData.confirmPassword) newErrors.confirmPassword = 'Passwords do not match';
+    
+    if (!formData.name) {
+      newErrors.name = ERROR_MESSAGES.AUTH.NAME_REQUIRED;
+    }
+    
+    if (!formData.email) {
+      newErrors.email = ERROR_MESSAGES.AUTH.EMAIL_REQUIRED;
+    } else if (!validateEmail(formData.email)) {
+      newErrors.email = ERROR_MESSAGES.AUTH.EMAIL_INVALID;
+    }
+    
+    if (!formData.password) {
+      newErrors.password = ERROR_MESSAGES.AUTH.PASSWORD_REQUIRED;
+    } else if (!validatePassword(formData.password)) {
+      newErrors.password = ERROR_MESSAGES.AUTH.PASSWORD_TOO_SHORT;
+    }
+    
+    if (formData.password && formData.confirmPassword && formData.password !== formData.confirmPassword) {
+      newErrors.confirmPassword = ERROR_MESSAGES.AUTH.PASSWORDS_DONT_MATCH;
+    } else if (!formData.confirmPassword && formData.password) {
+      newErrors.confirmPassword = ERROR_MESSAGES.AUTH.PASSWORD_REQUIRED;
+    }
+    
     return newErrors;
   };
 
@@ -36,17 +54,31 @@ const Register = () => {
       return;
     }
 
-    const result = await dispatch(register({
-      name: formData.name,
-      email: formData.email,
-      password: formData.password,
-    }));
+    try {
+      const result = await dispatch(register({
+        name: formData.name,
+        email: formData.email,
+        password: formData.password,
+      }));
 
-    if (result.type === register.fulfilled.type) {
-      showSuccess('Registration successful! Please login.');
-      navigate('/login');
-    } else {
-      showError(result.payload || 'Registration failed');
+      if (result.type === register.fulfilled.type) {
+        showSuccess('Registration successful! Please login.');
+        setFormData({ name: '', email: '', password: '', confirmPassword: '' });
+        navigate('/login');
+      } else if (result.type === register.rejected.type) {
+        const errorMsg = result.payload || ERROR_MESSAGES.AUTH.REGISTRATION_FAILED;
+        showError(errorMsg);
+      }
+    } catch (error) {
+      showError(ERROR_MESSAGES.UNKNOWN.UNEXPECTED_ERROR);
+    }
+  };
+
+  const handleInputChange = (field, value) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+    // Clear field error when user starts typing
+    if (errors[field]) {
+      setErrors((prev) => ({ ...prev, [field]: '' }));
     }
   };
 
@@ -63,10 +95,7 @@ const Register = () => {
             type="text"
             placeholder="John Doe"
             value={formData.name}
-            onChange={(e) => {
-              setFormData({ ...formData, name: e.target.value });
-              setErrors({ ...errors, name: '' });
-            }}
+            onChange={(e) => handleInputChange('name', e.target.value)}
             error={errors.name}
           />
 
@@ -75,10 +104,7 @@ const Register = () => {
             type="email"
             placeholder="your@email.com"
             value={formData.email}
-            onChange={(e) => {
-              setFormData({ ...formData, email: e.target.value });
-              setErrors({ ...errors, email: '' });
-            }}
+            onChange={(e) => handleInputChange('email', e.target.value)}
             error={errors.email}
           />
 
@@ -86,11 +112,9 @@ const Register = () => {
             label="Password"
             type="password"
             placeholder="At least 6 characters"
+            showPasswordToggle={true}
             value={formData.password}
-            onChange={(e) => {
-              setFormData({ ...formData, password: e.target.value });
-              setErrors({ ...errors, password: '' });
-            }}
+            onChange={(e) => handleInputChange('password', e.target.value)}
             error={errors.password}
           />
 
@@ -98,11 +122,9 @@ const Register = () => {
             label="Confirm Password"
             type="password"
             placeholder="Confirm your password"
+            showPasswordToggle={true}
             value={formData.confirmPassword}
-            onChange={(e) => {
-              setFormData({ ...formData, confirmPassword: e.target.value });
-              setErrors({ ...errors, confirmPassword: '' });
-            }}
+            onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
             error={errors.confirmPassword}
           />
 

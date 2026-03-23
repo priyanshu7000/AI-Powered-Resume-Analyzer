@@ -39,7 +39,11 @@ export const analyzeResume = async (resumeId, userId) => {
   resume.extractedSkills = analysis.skills || [];
   resume.missingSkills = analysis.missingSkills || [];
   resume.atsScore = analysis.atsScore || 0;
+  resume.atsBreakdown = analysis.atsBreakdown || {};
+  resume.skillCategories = analysis.skillCategories || { technical: [], softSkills: [], tools: [], languages: [] };
+  resume.skillProficiency = analysis.skillProficiency || [];
   resume.suggestions = analysis.suggestions || [];
+  resume.categorizedSuggestions = analysis.categorizedSuggestions || { highImpact: [], mediumImpact: [], lowImpact: [] };
   resume.analyzed = true;
 
   await resume.save();

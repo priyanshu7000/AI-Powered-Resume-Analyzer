@@ -1,14 +1,15 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, Link } from 'react-router-dom';
 import { Menu, LogOut, FileText, Briefcase, Moon, Sun } from 'lucide-react';
 import { logout } from '../features/authSlice';
 import { toggleTheme } from '../features/uiSlice';
-import { useState } from 'react';
+import { useConfirmation } from '../hooks/useConfirmation';
 
 const Navbar = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const confirmation = useConfirmation();
   const { isAuthenticated, user } = useSelector((state) => state.auth);
   const { theme } = useSelector((state) => state.ui);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -16,8 +17,12 @@ const Navbar = () => {
   const isDark = theme === 'dark';
 
   const handleLogout = async () => {
-    await dispatch(logout());
-    navigate('/login');
+    confirmation.logout({
+      onConfirm: async () => {
+        await dispatch(logout());
+        navigate('/login');
+      },
+    });
   };
 
   const handleThemeToggle = () => {

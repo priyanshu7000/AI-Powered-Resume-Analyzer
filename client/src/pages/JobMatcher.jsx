@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { useLocation } from 'react-router-dom';
 import { getResumes } from '../features/resumeSlice';
 import { matchJob } from '../features/jobSlice';
 import Card from '../components/Card';
@@ -15,6 +16,7 @@ const JobMatcher = () => {
   const [jobDescription, setJobDescription] = useState('');
   const [matchResult, setMatchResult] = useState(null);
   const dispatch = useDispatch();
+  const location = useLocation();
   const { resumes, loading: resumeLoading } = useSelector((state) => state.resume);
   const { loading: jobLoading } = useSelector((state) => state.job);
   const { showSuccess, showError } = useToast();
@@ -24,6 +26,13 @@ const JobMatcher = () => {
   useEffect(() => {
     dispatch(getResumes());
   }, [dispatch]);
+
+  // Auto-select resume if coming from ResumeDetails page
+  useEffect(() => {
+    if (location.state?.resumeId) {
+      setSelectedResumeId(location.state.resumeId);
+    }
+  }, [location.state]);
 
   const handleMatch = async (e) => {
     e.preventDefault();
