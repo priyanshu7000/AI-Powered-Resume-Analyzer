@@ -61,11 +61,18 @@ const jobSlice = createSlice({
       })
       .addCase(matchJob.fulfilled, (state, action) => {
         state.loading = false;
-        state.matches.unshift(action.payload);
+        state.error = null;
+        
+        // Update current match and add to array
+        if (action.payload) {
+          state.currentMatch = action.payload;
+          state.matches.unshift(action.payload);
+        }
       })
       .addCase(matchJob.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
+        state.currentMatch = null;
       });
 
     // Get All

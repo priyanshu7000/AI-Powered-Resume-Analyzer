@@ -214,17 +214,22 @@ const JobMatchDetails = () => {
                   </h3>
                 </div>
                 <ul className="space-y-4">
-                  {match.suggestions.map((suggestion, idx) => (
-                    <li key={idx} className="flex gap-3">
-                      <CheckCircle
-                        size={20}
-                        className="text-green-500 flex-shrink-0 mt-0.5"
-                      />
-                      <span className={`text-sm leading-relaxed ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                        {suggestion}
-                      </span>
-                    </li>
-                  ))}
+                  {match.suggestions
+                    .filter(s => {
+                      // Filter out malformed suggestions like "[object Object]"
+                      return s && typeof s === 'string' && s !== '[object Object]' && s.trim().length > 0;
+                    })
+                    .map((suggestion, idx) => (
+                      <li key={idx} className="flex gap-3">
+                        <CheckCircle
+                          size={20}
+                          className="text-green-500 flex-shrink-0 mt-0.5"
+                        />
+                        <span className={`text-sm leading-relaxed ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                          {suggestion}
+                        </span>
+                      </li>
+                    ))}
                 </ul>
               </Card>
             )}

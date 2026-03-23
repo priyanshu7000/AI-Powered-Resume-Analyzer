@@ -194,9 +194,9 @@ export const matchJobDescription = async (resumeText, jobDescription, jobTitle) 
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
     const prompt = `Compare the following resume with the job description and provide a structured JSON response with:
-    - matchScore: a score from 0-100 indicating how well the resume matches the job
-    - missingKeywords: array of important keywords from the job description not found in the resume
-    - suggestions: array of suggestions to improve match
+    - matchScore: a number from 0-100 indicating how well the resume matches the job
+    - missingKeywords: array of important keywords (strings) from the job description not found in the resume
+    - suggestions: array of suggestion strings to improve match
     
     Resume:
     ${resumeText}
@@ -205,7 +205,12 @@ export const matchJobDescription = async (resumeText, jobDescription, jobTitle) 
     Job Description:
     ${jobDescription}
     
-    Respond with valid JSON only, no markdown or extra text.`;
+    IMPORTANT: 
+    - Return ONLY valid JSON
+    - matchScore must be a number (not a string)
+    - missingKeywords must be an array of strings
+    - suggestions must be an array of strings (not objects)
+    - No markdown or extra text`;
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
@@ -223,14 +228,27 @@ export const matchJobDescription = async (resumeText, jobDescription, jobTitle) 
       match.missingKeywords = [];
     } else {
       // Ensure all keywords are strings
-      match.missingKeywords = match.missingKeywords.map(k => String(k)).filter(Boolean);
+      match.missingKeywords = match.missingKeywords.map(k => {
+        if (typeof k === 'string') return k;
+        if (typeof k === 'object' && k !== null) return k.keyword || k.value || JSON.stringify(k);
+        return String(k);
+      }).filter(Boolean);
     }
 
     if (!match.suggestions || !Array.isArray(match.suggestions)) {
       match.suggestions = [];
     } else {
-      // Ensure all suggestions are strings
-      match.suggestions = match.suggestions.map(s => String(s)).filter(Boolean);
+      // Ensure all suggestions are strings - handle cases where they might be objects
+      match.suggestions = match.suggestions.map(s => {
+        // If it's already a string, return it
+        if (typeof s === 'string') return s;
+        // If it's an object with properties, extract the text
+        if (typeof s === 'object' && s !== null) {
+          return s.suggestion || s.text || s.title || s.description || JSON.stringify(s);
+        }
+        // Fallback: convert to string
+        return String(s).trim();
+      }).filter(s => s && s !== '[object Object]' && s.length > 0);
     }
 
     return match;
