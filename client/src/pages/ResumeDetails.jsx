@@ -85,6 +85,8 @@ const ResumeDetails = () => {
       // Call analyze endpoint directly
       const response = await api.post(`/resume/analyze/${id}`);
       
+      console.log('Analysis Response:', response.data); // Debug log
+      
       // Verify response structure
       if (response.data && response.data.success && response.data.resume) {
         const analyzedData = response.data.resume;
@@ -272,18 +274,18 @@ const ResumeDetails = () => {
         )}
 
         {/* ATS Score Breakdown */}
-        {resume.analyzed && resume.atsBreakdown && (
+        {resume.analyzed && resume.atsBreakdown && Object.keys(resume.atsBreakdown).length > 0 && (
           <Card className="p-6 mb-6">
             <h2 className={`text-xl font-bold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>
               ATS Score Breakdown
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
               {[
-                { label: 'Formatting', value: resume.atsBreakdown.formatting },
-                { label: 'Keyword Optimization', value: resume.atsBreakdown.keywordOptimization },
-                { label: 'Structure', value: resume.atsBreakdown.structure },
-                { label: 'Length', value: resume.atsBreakdown.length },
-                { label: 'Readability', value: resume.atsBreakdown.readability },
+                { label: 'Formatting', value: resume.atsBreakdown.formatting || 0 },
+                { label: 'Keywords', value: resume.atsBreakdown.keywordOptimization || 0 },
+                { label: 'Structure', value: resume.atsBreakdown.structure || 0 },
+                { label: 'Length', value: resume.atsBreakdown.length || 0 },
+                { label: 'Readability', value: resume.atsBreakdown.readability || 0 },
               ].map((metric) => (
                 <div key={metric.label} className="text-center">
                   <div className="relative w-full h-32 flex items-center justify-center mb-3">
@@ -309,7 +311,7 @@ const ResumeDetails = () => {
                       />
                     </svg>
                     <span className={`absolute text-2xl font-bold ${getScoreColor(metric.value)}`}>
-                      {metric.value}%
+                      {Math.round(metric.value || 0)}%
                     </span>
                   </div>
                   <p className={isDark ? 'text-gray-300' : 'text-gray-700'}>{metric.label}</p>
@@ -327,10 +329,10 @@ const ResumeDetails = () => {
             </h2>
             <div className="space-y-6">
               {[
-                { title: 'Technical Skills', skills: resume.skillCategories.technical, color: 'bg-blue-500' },
-                { title: 'Soft Skills', skills: resume.skillCategories.softSkills, color: 'bg-purple-500' },
-                { title: 'Tools & Platforms', skills: resume.skillCategories.tools, color: 'bg-green-500' },
-                { title: 'Languages', skills: resume.skillCategories.languages, color: 'bg-yellow-500' },
+                { title: 'Technical Skills', skills: resume.skillCategories?.technical || [], color: 'bg-blue-500' },
+                { title: 'Soft Skills', skills: resume.skillCategories?.softSkills || [], color: 'bg-purple-500' },
+                { title: 'Tools & Platforms', skills: resume.skillCategories?.tools || [], color: 'bg-green-500' },
+                { title: 'Languages', skills: resume.skillCategories?.languages || [], color: 'bg-yellow-500' },
               ].map((category) => (
                 <div key={category.title}>
                   <h3 className={`text-sm font-semibold mb-3 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
@@ -343,7 +345,7 @@ const ResumeDetails = () => {
                           key={idx}
                           className={`px-3 py-1 ${category.color} text-white text-sm rounded-full`}
                         >
-                          {skill}
+                          {String(skill)}
                         </span>
                       ))}
                     </div>
@@ -359,7 +361,7 @@ const ResumeDetails = () => {
         )}
 
         {/* Skill Proficiency */}
-        {resume.analyzed && resume.skillProficiency && resume.skillProficiency.length > 0 && (
+        {resume.analyzed && resume.skillProficiency && Array.isArray(resume.skillProficiency) && resume.skillProficiency.length > 0 && (
           <Card className="p-6 mb-6">
             <h2 className={`text-xl font-bold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>
               Skill Proficiency Levels
@@ -369,10 +371,10 @@ const ResumeDetails = () => {
                 <div key={idx} className="flex items-center justify-between">
                   <div className="flex-1">
                     <p className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                      {skill.skill}
+                      {skill.skill || 'Unknown Skill'}
                     </p>
                     <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-                      {skill.category} • {skill.proficiencyLevel}
+                      {skill.category || 'general'} • {skill.proficiencyLevel || 'Intermediate'}
                       {skill.yearsOfExperience && ` • ${skill.yearsOfExperience}+ years`}
                     </p>
                   </div>
@@ -450,7 +452,7 @@ const ResumeDetails = () => {
             </h2>
             <div className="space-y-6">
               {/* High Impact */}
-              {resume.categorizedSuggestions.highImpact && resume.categorizedSuggestions.highImpact.length > 0 && (
+              {resume.categorizedSuggestions.highImpact && Array.isArray(resume.categorizedSuggestions.highImpact) && resume.categorizedSuggestions.highImpact.length > 0 && (
                 <div>
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-3 h-3 rounded-full bg-red-500"></div>
@@ -462,13 +464,13 @@ const ResumeDetails = () => {
                     {resume.categorizedSuggestions.highImpact.map((sug, idx) => (
                       <div key={idx} className={`p-3 rounded-lg ${isDark ? 'bg-red-900/20' : 'bg-red-50'} border-l-4 border-red-500`}>
                         <p className={`font-medium mb-1 ${isDark ? 'text-red-400' : 'text-red-800'}`}>
-                          {sug.title}
+                          {sug.title || 'Untitled'}
                         </p>
                         <p className={isDark ? 'text-gray-400' : 'text-gray-700'}>
-                          {sug.description}
+                          {sug.description || 'No description provided'}
                         </p>
                         <span className={`inline-block text-xs mt-2 px-2 py-1 rounded ${isDark ? 'bg-gray-700' : 'bg-gray-200'}`}>
-                          {sug.category}
+                          {sug.category || 'general'}
                         </span>
                       </div>
                     ))}
@@ -477,7 +479,7 @@ const ResumeDetails = () => {
               )}
 
               {/* Medium Impact */}
-              {resume.categorizedSuggestions.mediumImpact && resume.categorizedSuggestions.mediumImpact.length > 0 && (
+              {resume.categorizedSuggestions.mediumImpact && Array.isArray(resume.categorizedSuggestions.mediumImpact) && resume.categorizedSuggestions.mediumImpact.length > 0 && (
                 <div>
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
@@ -489,13 +491,13 @@ const ResumeDetails = () => {
                     {resume.categorizedSuggestions.mediumImpact.map((sug, idx) => (
                       <div key={idx} className={`p-3 rounded-lg ${isDark ? 'bg-yellow-900/20' : 'bg-yellow-50'} border-l-4 border-yellow-500`}>
                         <p className={`font-medium mb-1 ${isDark ? 'text-yellow-400' : 'text-yellow-800'}`}>
-                          {sug.title}
+                          {sug.title || 'Untitled'}
                         </p>
                         <p className={isDark ? 'text-gray-400' : 'text-gray-700'}>
-                          {sug.description}
+                          {sug.description || 'No description provided'}
                         </p>
                         <span className={`inline-block text-xs mt-2 px-2 py-1 rounded ${isDark ? 'bg-gray-700' : 'bg-gray-200'}`}>
-                          {sug.category}
+                          {sug.category || 'general'}
                         </span>
                       </div>
                     ))}
@@ -504,7 +506,7 @@ const ResumeDetails = () => {
               )}
 
               {/* Low Impact */}
-              {resume.categorizedSuggestions.lowImpact && resume.categorizedSuggestions.lowImpact.length > 0 && (
+              {resume.categorizedSuggestions.lowImpact && Array.isArray(resume.categorizedSuggestions.lowImpact) && resume.categorizedSuggestions.lowImpact.length > 0 && (
                 <div>
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-3 h-3 rounded-full bg-blue-500"></div>
@@ -516,13 +518,13 @@ const ResumeDetails = () => {
                     {resume.categorizedSuggestions.lowImpact.map((sug, idx) => (
                       <div key={idx} className={`p-3 rounded-lg ${isDark ? 'bg-blue-900/20' : 'bg-blue-50'} border-l-4 border-blue-500`}>
                         <p className={`font-medium mb-1 ${isDark ? 'text-blue-400' : 'text-blue-800'}`}>
-                          {sug.title}
+                          {sug.title || 'Untitled'}
                         </p>
                         <p className={isDark ? 'text-gray-400' : 'text-gray-700'}>
-                          {sug.description}
+                          {sug.description || 'No description provided'}
                         </p>
                         <span className={`inline-block text-xs mt-2 px-2 py-1 rounded ${isDark ? 'bg-gray-700' : 'bg-gray-200'}`}>
-                          {sug.category}
+                          {sug.category || 'general'}
                         </span>
                       </div>
                     ))}
@@ -534,7 +536,7 @@ const ResumeDetails = () => {
         )}
 
         {/* Legacy Suggestions (if no categorized suggestions) */}
-        {resume.suggestions && resume.suggestions.length > 0 && (!resume.categorizedSuggestions || !resume.categorizedSuggestions.highImpact || resume.categorizedSuggestions.highImpact.length === 0) && (
+        {resume.suggestions && Array.isArray(resume.suggestions) && resume.suggestions.length > 0 && (!resume.categorizedSuggestions || !resume.categorizedSuggestions.highImpact || resume.categorizedSuggestions.highImpact.length === 0) && (
           <Card className="p-6 mb-6">
             <h2 className={`text-xl font-bold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>
               AI Suggestions for Improvement
@@ -544,7 +546,7 @@ const ResumeDetails = () => {
                 <li key={idx} className="flex gap-3">
                   <span className="text-green-500 font-bold">✓</span>
                   <span className={isDark ? 'text-gray-300' : 'text-gray-700'}>
-                    {suggestion}
+                    {String(suggestion)}
                   </span>
                 </li>
               ))}
