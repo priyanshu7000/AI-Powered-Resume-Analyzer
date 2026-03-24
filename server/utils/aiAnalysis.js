@@ -279,6 +279,7 @@ RULES:
   }
 };
 
+
 /**
  * Validates and normalizes analysis response
  */
