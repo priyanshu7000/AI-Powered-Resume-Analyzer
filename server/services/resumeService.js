@@ -23,6 +23,8 @@ export const uploadResume = async (userId, file) => {
 };
 
 export const analyzeResume = async (resumeId, userId) => {
+  console.log(`[Resume Service] Starting analysis for resume: ${resumeId}`);
+  
   const resume = await Resume.findById(resumeId);
   if (!resume) {
     throw new Error('Resume not found');
@@ -32,23 +34,38 @@ export const analyzeResume = async (resumeId, userId) => {
     throw new Error('Not authorized to analyze this resume');
   }
 
-  // Call AI analysis
-  const analysis = await analyzeResumeWithAI(resume.resumeText);
+  console.log(`[Resume Service] Resume text length: ${resume.resumeText.length} chars`);
+  console.log(`[Resume Service] Calling AI analysis...`);
 
-  // Update resume with analysis
-  resume.extractedSkills = analysis.skills || [];
-  resume.missingSkills = analysis.missingSkills || [];
-  resume.atsScore = analysis.atsScore || 0;
-  resume.atsBreakdown = analysis.atsBreakdown || {};
-  resume.skillCategories = analysis.skillCategories || { technical: [], softSkills: [], tools: [], languages: [] };
-  resume.skillProficiency = analysis.skillProficiency || [];
-  resume.suggestions = analysis.suggestions || [];
-  resume.categorizedSuggestions = analysis.categorizedSuggestions || { highImpact: [], mediumImpact: [], lowImpact: [] };
-  resume.analyzed = true;
+  try {
+    // Call AI analysis - with detailed timing
+    const startTime = Date.now();
+    const analysis = await analyzeResumeWithAI(resume.resumeText);
+    const analysisDuration = Date.now() - startTime;
+    
+    console.log(`[Resume Service] ✓ AI analysis completed in ${analysisDuration}ms`);
+    console.log(`[Resume Service] ATS Score: ${analysis.atsScore}`);
 
-  await resume.save();
+    // Update resume with analysis - STRICT: Use ONLY AI provided data
+    resume.extractedSkills = analysis.skills;
+    resume.missingSkills = analysis.missingSkills;
+    resume.atsScore = analysis.atsScore;
+    resume.atsBreakdown = analysis.atsBreakdown;
+    resume.skillCategories = analysis.skillCategories;
+    resume.skillProficiency = analysis.skillProficiency;
+    resume.suggestions = analysis.suggestions;
+    resume.categorizedSuggestions = analysis.categorizedSuggestions;
+    resume.analyzed = true;
 
-  return resume;
+    await resume.save();
+    console.log(`[Resume Service] ✓ Resume saved to database`);
+    
+    return resume;
+  } catch (error) {
+    console.error(`[Resume Service] ✗ Analysis failed:`, error.message);
+    console.error(`[Resume Service] Error details:`, error);
+    throw new Error(`Resume analysis failed: ${error.message}`);
+  }
 };
 
 export const getUserResumes = async (userId) => {

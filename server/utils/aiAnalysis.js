@@ -52,44 +52,52 @@ const extractAndParseJSON = (content) => {
  * @returns {Promise<Object>} - Object containing skills, missingSkills, atsScore, and suggestions
  */
 export const analyzeResumeWithAI = async (resumeText) => {
+  const errors = {};
+  
   try {
     // Try Groq first - unlimited free tier
     if (process.env.GROQ_API_KEY) {
       try {
+        console.log('[AI Analysis] Attempting: Groq API');
         logAPIUsage('Groq', 'Resume Analysis');
-        return await analyzeWithGroq(resumeText);
+        const result = await analyzeWithGroq(resumeText);
+        console.log('[AI Analysis] ✓ Groq succeeded');
+        return result;
       } catch (groqError) {
-        console.error('[Groq Error - Falling back to Gemini]', groqError.message);
-        
-        // Try Gemini as fallback
-        if (process.env.GEMINI_API_KEY) {
-          try {
-            logAPIUsage('Gemini', 'Resume Analysis - Groq failed');
-            return await analyzeWithGemini(resumeText);
-          } catch (geminiError) {
-            console.error('[Gemini Error]', geminiError.message);
-            throw new Error(`Both Groq and Gemini failed: ${geminiError.message}`);
-          }
-        }
-        
-        throw new Error(`Groq failed and no Gemini API key available: ${groqError.message}`);
+        errors.groq = groqError.message;
+        console.error('[AI Analysis] ✗ Groq failed:', groqError.message);
+        console.error('[AI Analysis] Full Groq error:', groqError);
       }
+    } else {
+      console.warn('[AI Analysis] Groq API key not configured');
     }
 
-    // Try Gemini if Groq not available
+    // Try Gemini as fallback
     if (process.env.GEMINI_API_KEY) {
       try {
-        logAPIUsage('Gemini', 'Resume Analysis - No Groq API key');
-        return await analyzeWithGemini(resumeText);
+        console.log('[AI Analysis] Attempting: Gemini API (fallback)');
+        logAPIUsage('Gemini', 'Resume Analysis - Groq failed');
+        const result = await analyzeWithGemini(resumeText);
+        console.log('[AI Analysis] ✓ Gemini succeeded');
+        return result;
       } catch (geminiError) {
-        throw new Error(`Gemini analysis failed: ${geminiError.message}`);
+        errors.gemini = geminiError.message;
+        console.error('[AI Analysis] ✗ Gemini failed:', geminiError.message);
+        console.error('[AI Analysis] Full Gemini error:', geminiError);
       }
+    } else {
+      console.warn('[AI Analysis] Gemini API key not configured');
     }
 
-    throw new Error('No AI APIs configured: Please set GROQ_API_KEY or GEMINI_API_KEY');
+    // If both failed, provide detailed error info
+    const errorDetails = Object.entries(errors)
+      .map(([api, msg]) => `${api}: ${msg}`)
+      .join(' | ');
+    
+    throw new Error(`Both Groq and Gemini failed: ${errorDetails || 'No AI APIs configured'}`);
   } catch (error) {
     console.error('[Analysis Fatal Error]', error.message);
-    throw new Error(`AI analysis failed: ${error.message}`);
+    throw error;
   }
 };
 
@@ -161,6 +169,7 @@ RULES:
 - missingSkills should suggest what the resume is missing for modern roles`;
 
   try {
+    console.log('[Groq] Sending request...');
     const message = await groq.messages.create({
       model: 'mixtral-8x7b-32768',
       max_tokens: 2048,
@@ -174,17 +183,22 @@ RULES:
     });
 
     if (!message.content || !message.content[0]) {
+      console.error('[Groq] Error: Empty response');
       throw new Error('Empty response from Groq API');
     }
 
     const content = message.content[0].type === 'text' ? message.content[0].text : '';
     if (!content) {
+      console.error('[Groq] Error: No text content');
       throw new Error('No text content in Groq response');
     }
 
+    console.log('[Groq] Response received, parsing...');
     const analysis = extractAndParseJSON(content);
+    console.log('[Groq] Analysis parsed successfully');
     return validateAnalysis(analysis);
   } catch (error) {
+    console.error('[Groq] Analysis error:', error.message);
     logAPIUsage('Groq', `Error: ${error.message}`);
     throw error;
   }
@@ -259,21 +273,27 @@ RULES:
 - missingSkills should suggest what the resume is missing for modern roles`;
 
   try {
+    console.log('[Gemini] Sending request...');
     const result = await model.generateContent(prompt);
     const response = await result.response;
     
     if (!response || !response.text) {
+      console.error('[Gemini] Error: Empty response');
       throw new Error('Empty response from Gemini API');
     }
     
     const content = response.text();
     if (!content) {
+      console.error('[Gemini] Error: No text content');
       throw new Error('No text content in Gemini response');
     }
     
+    console.log('[Gemini] Response received, parsing...');
     const analysis = extractAndParseJSON(content);
+    console.log('[Gemini] Analysis parsed successfully');
     return validateAnalysis(analysis);
   } catch (error) {
+    console.error('[Gemini] Analysis error:', error.message);
     logAPIUsage('Gemini', `Error: ${error.message}`);
     throw error;
   }
@@ -281,91 +301,132 @@ RULES:
 
 
 /**
- * Validates and normalizes analysis response
+ * Validates analysis response - STRICT AI-ONLY, NO LOCAL ANALYSIS
+ * Rejects any incomplete or malformed responses
  */
 const validateAnalysis = (analysis) => {
-  // Validate and normalize response structure
-  if (!analysis.skills || !Array.isArray(analysis.skills)) {
-    analysis.skills = [];
-  } else {
-    analysis.skills = analysis.skills.map(s => String(s)).filter(Boolean);
+  // Validate required fields exist
+  if (!analysis || typeof analysis !== 'object') {
+    throw new Error('AI analysis returned invalid response');
   }
 
-  if (!analysis.missingSkills || !Array.isArray(analysis.missingSkills)) {
-    analysis.missingSkills = [];
-  } else {
-    analysis.missingSkills = analysis.missingSkills.map(s => String(s)).filter(Boolean);
+  // Validate skills array
+  if (!Array.isArray(analysis.skills)) {
+    throw new Error('AI response missing required field: skills array');
   }
+  analysis.skills = analysis.skills.map(s => String(s).trim()).filter(Boolean);
 
-  // Validate ATS score
-  if (typeof analysis.atsScore !== 'number') {
-    const score = parseInt(analysis.atsScore);
-    analysis.atsScore = isNaN(score) ? 50 : score;
+  // Validate missingSkills array
+  if (!Array.isArray(analysis.missingSkills)) {
+    throw new Error('AI response missing required field: missingSkills array');
   }
-  analysis.atsScore = Math.min(100, Math.max(0, analysis.atsScore));
+  analysis.missingSkills = analysis.missingSkills.map(s => String(s).trim()).filter(Boolean);
 
-  // Validate ATS Breakdown
+  // STRICT: ATS score must be a valid number from AI
+  if (typeof analysis.atsScore !== 'number' || isNaN(analysis.atsScore)) {
+    throw new Error('AI response missing valid atsScore number');
+  }
+  // Ensure score is in valid range
+  if (analysis.atsScore < 0 || analysis.atsScore > 100) {
+    throw new Error(`Invalid ATS score from AI: ${analysis.atsScore} (must be 0-100)`);
+  }
+  analysis.atsScore = Math.round(analysis.atsScore);
+
+  // STRICT: Require complete ATS breakdown from AI
   if (!analysis.atsBreakdown || typeof analysis.atsBreakdown !== 'object') {
-    analysis.atsBreakdown = {};
+    throw new Error('AI response missing required field: atsBreakdown object');
   }
+  
   const breakdownFields = ['formatting', 'keywordOptimization', 'structure', 'length', 'readability'];
-  breakdownFields.forEach(field => {
-    if (typeof analysis.atsBreakdown[field] !== 'number') {
-      const score = parseInt(analysis.atsBreakdown[field]);
-      analysis.atsBreakdown[field] = isNaN(score) ? 50 : Math.min(100, Math.max(0, score));
+  for (const field of breakdownFields) {
+    if (typeof analysis.atsBreakdown[field] !== 'number' || isNaN(analysis.atsBreakdown[field])) {
+      throw new Error(`AI response missing valid ${field} score in atsBreakdown`);
     }
-  });
+    if (analysis.atsBreakdown[field] < 0 || analysis.atsBreakdown[field] > 100) {
+      throw new Error(`Invalid ${field} score from AI: ${analysis.atsBreakdown[field]} (must be 0-100)`);
+    }
+    analysis.atsBreakdown[field] = Math.round(analysis.atsBreakdown[field]);
+  }
 
-  // Validate Skill Categories
+  // STRICT: Require skill categories from AI
   if (!analysis.skillCategories || typeof analysis.skillCategories !== 'object') {
-    analysis.skillCategories = { technical: [], softSkills: [], tools: [], languages: [] };
+    throw new Error('AI response missing required field: skillCategories object');
   }
-  ['technical', 'softSkills', 'tools', 'languages'].forEach(category => {
+  
+  const categoryNames = ['technical', 'softSkills', 'tools', 'languages'];
+  for (const category of categoryNames) {
     if (!Array.isArray(analysis.skillCategories[category])) {
-      analysis.skillCategories[category] = [];
-    } else {
-      analysis.skillCategories[category] = analysis.skillCategories[category]
-        .map(s => String(s)).filter(Boolean);
+      throw new Error(`AI response missing skillCategories.${category} array`);
     }
-  });
+    analysis.skillCategories[category] = analysis.skillCategories[category]
+      .map(s => String(s).trim())
+      .filter(Boolean);
+  }
 
-  // Validate Skill Proficiency
+  // STRICT: Require skill proficiency array from AI
   if (!Array.isArray(analysis.skillProficiency)) {
-    analysis.skillProficiency = [];
-  } else {
-    analysis.skillProficiency = analysis.skillProficiency.map(sp => ({
-      skill: String(sp.skill || '').trim(),
-      category: String(sp.category || 'technical'),
-      proficiencyLevel: ['Beginner', 'Intermediate', 'Advanced', 'Expert'].includes(sp.proficiencyLevel)
-        ? sp.proficiencyLevel
-        : 'Intermediate',
-      yearsOfExperience: typeof sp.yearsOfExperience === 'number' ? sp.yearsOfExperience : null,
-    })).filter(sp => sp.skill);
+    throw new Error('AI response missing required field: skillProficiency array');
+  }
+  
+  if (analysis.skillProficiency.length === 0) {
+    throw new Error('AI response returned empty skillProficiency (expected at least 1 skill)');
   }
 
-  if (!analysis.suggestions || !Array.isArray(analysis.suggestions)) {
-    analysis.suggestions = [];
-  } else {
-    analysis.suggestions = analysis.suggestions.map(s => String(s)).filter(Boolean);
-  }
+  analysis.skillProficiency = analysis.skillProficiency
+    .map(sp => {
+      if (!sp.skill || typeof sp.skill !== 'string') {
+        throw new Error('Invalid skill in skillProficiency: missing or non-string skill name');
+      }
+      if (!sp.category || typeof sp.category !== 'string') {
+        throw new Error(`Invalid skill "${sp.skill}": missing or non-string category`);
+      }
+      if (!['Beginner', 'Intermediate', 'Advanced', 'Expert'].includes(sp.proficiencyLevel)) {
+        throw new Error(`Invalid skill "${sp.skill}": unknown proficiency level "${sp.proficiencyLevel}"`);
+      }
+      
+      return {
+        skill: String(sp.skill).trim(),
+        category: String(sp.category),
+        proficiencyLevel: sp.proficiencyLevel,
+        yearsOfExperience: typeof sp.yearsOfExperience === 'number' ? sp.yearsOfExperience : null,
+      };
+    })
+    .filter(sp => sp.skill);
 
-  // Validate categorized suggestions
+  // STRICT: Require suggestions from AI
+  if (!Array.isArray(analysis.suggestions)) {
+    throw new Error('AI response missing required field: suggestions array');
+  }
+  analysis.suggestions = analysis.suggestions
+    .map(s => String(s).trim())
+    .filter(Boolean);
+
+  // STRICT: Require categorized suggestions from AI
   if (!analysis.categorizedSuggestions || typeof analysis.categorizedSuggestions !== 'object') {
-    analysis.categorizedSuggestions = { highImpact: [], mediumImpact: [], lowImpact: [] };
+    throw new Error('AI response missing required field: categorizedSuggestions object');
   }
-  ['highImpact', 'mediumImpact', 'lowImpact'].forEach(level => {
+  
+  const suggestionLevels = ['highImpact', 'mediumImpact', 'lowImpact'];
+  for (const level of suggestionLevels) {
     if (!Array.isArray(analysis.categorizedSuggestions[level])) {
-      analysis.categorizedSuggestions[level] = [];
-    } else {
-      analysis.categorizedSuggestions[level] = analysis.categorizedSuggestions[level]
-        .map(sug => ({
-          title: String(sug.title || '').trim(),
-          description: String(sug.description || '').trim(),
-          category: String(sug.category || 'general'),
-        }))
-        .filter(sug => sug.title && sug.description);
+      throw new Error(`AI response missing categorizedSuggestions.${level} array`);
     }
-  });
+    analysis.categorizedSuggestions[level] = analysis.categorizedSuggestions[level]
+      .map(sug => {
+        if (!sug.title || typeof sug.title !== 'string') {
+          throw new Error(`Invalid suggestion in ${level}: missing or non-string title`);
+        }
+        if (!sug.description || typeof sug.description !== 'string') {
+          throw new Error(`Invalid suggestion "${sug.title}": missing or non-string description`);
+        }
+        return {
+          title: String(sug.title).trim(),
+          description: String(sug.description).trim(),
+          category: String(sug.category || 'general'),
+        };
+      })
+      .filter(sug => sug.title && sug.description);
+  }
 
   return analysis;
 };
@@ -379,44 +440,52 @@ const validateAnalysis = (analysis) => {
  * @returns {Promise<Object>} - Object containing matchScore, missingKeywords, and suggestions
  */
 export const matchJobDescription = async (resumeText, jobDescription, jobTitle) => {
+  const errors = {};
+  
   try {
     // Try Groq first - unlimited free tier
     if (process.env.GROQ_API_KEY) {
       try {
+        console.log('[Job Matching] Attempting: Groq API');
         logAPIUsage('Groq', 'Job Matching');
-        return await matchWithGroq(resumeText, jobDescription, jobTitle);
+        const result = await matchWithGroq(resumeText, jobDescription, jobTitle);
+        console.log('[Job Matching] ✓ Groq succeeded');
+        return result;
       } catch (groqError) {
-        console.error('[Groq Matching Error - Falling back to Gemini]', groqError.message);
-        
-        // Try Gemini as fallback
-        if (process.env.GEMINI_API_KEY) {
-          try {
-            logAPIUsage('Gemini', 'Job Matching - Groq failed');
-            return await matchWithGemini(resumeText, jobDescription, jobTitle);
-          } catch (geminiError) {
-            console.error('[Gemini Matching Error]', geminiError.message);
-            throw new Error(`Both Groq and Gemini failed: ${geminiError.message}`);
-          }
-        }
-        
-        throw new Error(`Groq failed and no Gemini API key available: ${groqError.message}`);
+        errors.groq = groqError.message;
+        console.error('[Job Matching] ✗ Groq failed:', groqError.message);
+        console.error('[Job Matching] Full Groq error:', groqError);
       }
+    } else {
+      console.warn('[Job Matching] Groq API key not configured');
     }
 
-    // Try Gemini if Groq not available
+    // Try Gemini as fallback
     if (process.env.GEMINI_API_KEY) {
       try {
-        logAPIUsage('Gemini', 'Job Matching - No Groq API key');
-        return await matchWithGemini(resumeText, jobDescription, jobTitle);
+        console.log('[Job Matching] Attempting: Gemini API (fallback)');
+        logAPIUsage('Gemini', 'Job Matching - Groq failed');
+        const result = await matchWithGemini(resumeText, jobDescription, jobTitle);
+        console.log('[Job Matching] ✓ Gemini succeeded');
+        return result;
       } catch (geminiError) {
-        throw new Error(`Gemini matching failed: ${geminiError.message}`);
+        errors.gemini = geminiError.message;
+        console.error('[Job Matching] ✗ Gemini failed:', geminiError.message);
+        console.error('[Job Matching] Full Gemini error:', geminiError);
       }
+    } else {
+      console.warn('[Job Matching] Gemini API key not configured');
     }
 
-    throw new Error('No AI APIs configured: Please set GROQ_API_KEY or GEMINI_API_KEY');
+    // If both failed, provide detailed error info
+    const errorDetails = Object.entries(errors)
+      .map(([api, msg]) => `${api}: ${msg}`)
+      .join(' | ');
+    
+    throw new Error(`Both Groq and Gemini failed: ${errorDetails || 'No AI APIs configured'}`);
   } catch (error) {
     console.error('[Job Matching Fatal Error]', error.message);
-    throw new Error(`Job matching failed: ${error.message}`);
+    throw error;
   }
 };
 
@@ -461,6 +530,7 @@ RULES:
 - Return ONLY JSON, no extra text`;
 
   try {
+    console.log('[Groq - Matching] Sending request...');
     const message = await groq.messages.create({
       model: 'mixtral-8x7b-32768',
       max_tokens: 1024,
@@ -474,17 +544,22 @@ RULES:
     });
 
     if (!message.content || !message.content[0]) {
+      console.error('[Groq - Matching] Error: Empty response');
       throw new Error('Empty response from Groq API');
     }
 
     const content = message.content[0].type === 'text' ? message.content[0].text : '';
     if (!content) {
+      console.error('[Groq - Matching] Error: No text content');
       throw new Error('No text content in Groq response');
     }
 
+    console.log('[Groq - Matching] Response received, parsing...');
     const match = extractAndParseJSON(content);
+    console.log('[Groq - Matching] Match parsed successfully');
     return validateMatch(match);
   } catch (error) {
+    console.error('[Groq - Matching] Error:', error.message);
     logAPIUsage('Groq', `Matching Error: ${error.message}`);
     throw error;
   }
@@ -533,71 +608,101 @@ RULES:
 - Return ONLY JSON, no extra text`;
 
   try {
+    console.log('[Gemini - Matching] Sending request...');
     const result = await model.generateContent(prompt);
     const response = await result.response;
     
     if (!response || !response.text) {
+      console.error('[Gemini - Matching] Error: Empty response');
       throw new Error('Empty response from Gemini API');
     }
     
     const content = response.text();
     if (!content) {
+      console.error('[Gemini - Matching] Error: No text content');
       throw new Error('No text content in Gemini response');
     }
     
+    console.log('[Gemini - Matching] Response received, parsing...');
     const match = extractAndParseJSON(content);
+    console.log('[Gemini - Matching] Match parsed successfully');
     return validateMatch(match);
   } catch (error) {
+    console.error('[Gemini - Matching] Error:', error.message);
     logAPIUsage('Gemini', `Matching Error: ${error.message}`);
     throw error;
   }
 };
 
 /**
- * Validates and normalizes match response
+ * Validates match response - STRICT AI-ONLY, NO LOCAL ANALYSIS
+ * Rejects any incomplete or malformed responses
  */
 const validateMatch = (match) => {
-  // Validate and normalize response structure
-  if (typeof match.matchScore !== 'number') {
-    const score = parseInt(match.matchScore);
-    match.matchScore = isNaN(score) ? 50 : score;
-  }
-  match.matchScore = Math.min(100, Math.max(0, match.matchScore));
-
-  if (!match.missingKeywords || !Array.isArray(match.missingKeywords)) {
-    match.missingKeywords = [];
-  } else {
-    // Ensure all keywords are strings
-    match.missingKeywords = match.missingKeywords.map(k => {
-      if (typeof k === 'string') return k;
-      if (typeof k === 'object' && k !== null) return k.keyword || k.value || JSON.stringify(k);
-      return String(k);
-    }).filter(Boolean);
+  // Validate required fields exist
+  if (!match || typeof match !== 'object') {
+    throw new Error('AI matching returned invalid response');
   }
 
-  // Validate presentKeywords (optional, but good to have)
-  if (!match.presentKeywords || !Array.isArray(match.presentKeywords)) {
-    match.presentKeywords = [];
-  } else {
-    match.presentKeywords = match.presentKeywords.map(k => {
-      if (typeof k === 'string') return k;
-      if (typeof k === 'object' && k !== null) return k.keyword || k.value || JSON.stringify(k);
-      return String(k);
-    }).filter(Boolean);
+  // STRICT: Match score must be a valid number from AI
+  if (typeof match.matchScore !== 'number' || isNaN(match.matchScore)) {
+    throw new Error('AI response missing valid matchScore number');
   }
+  if (match.matchScore < 0 || match.matchScore > 100) {
+    throw new Error(`Invalid match score from AI: ${match.matchScore} (must be 0-100)`);
+  }
+  match.matchScore = Math.round(match.matchScore);
 
-  if (!match.suggestions || !Array.isArray(match.suggestions)) {
-    match.suggestions = [];
-  } else {
-    // Ensure all suggestions are strings
-    match.suggestions = match.suggestions.map(s => {
-      if (typeof s === 'string') return s;
+  // STRICT: Require missing keywords array from AI
+  if (!Array.isArray(match.missingKeywords)) {
+    throw new Error('AI response missing required field: missingKeywords array');
+  }
+  if (match.missingKeywords.length === 0) {
+    throw new Error('AI response returned empty missingKeywords (expected at least keywords analysis)');
+  }
+  match.missingKeywords = match.missingKeywords
+    .map(k => {
+      if (typeof k === 'string') return k.trim();
+      if (typeof k === 'object' && k !== null && k.keyword) return String(k.keyword).trim();
+      if (typeof k === 'object' && k !== null && k.value) return String(k.value).trim();
+      const str = String(k).trim();
+      if (str && str !== '[object Object]') return str;
+      throw new Error(`Invalid keyword format in missingKeywords: ${JSON.stringify(k)}`);
+    })
+    .filter(Boolean);
+
+  // STRICT: Require present keywords array from AI
+  if (!Array.isArray(match.presentKeywords)) {
+    throw new Error('AI response missing required field: presentKeywords array');
+  }
+  match.presentKeywords = match.presentKeywords
+    .map(k => {
+      if (typeof k === 'string') return k.trim();
+      if (typeof k === 'object' && k !== null && k.keyword) return String(k.keyword).trim();
+      if (typeof k === 'object' && k !== null && k.value) return String(k.value).trim();
+      const str = String(k).trim();
+      if (str && str !== '[object Object]') return str;
+      return null;
+    })
+    .filter(Boolean);
+
+  // STRICT: Require suggestions array from AI
+  if (!Array.isArray(match.suggestions)) {
+    throw new Error('AI response missing required field: suggestions array');
+  }
+  if (match.suggestions.length === 0) {
+    throw new Error('AI response returned empty suggestions (expected actionable improvement suggestions)');
+  }
+  match.suggestions = match.suggestions
+    .map(s => {
+      if (typeof s === 'string') return s.trim();
       if (typeof s === 'object' && s !== null) {
-        return s.suggestion || s.text || s.title || s.description || JSON.stringify(s);
+        const suggestion = s.suggestion || s.text || s.title || s.description;
+        if (suggestion) return String(suggestion).trim();
       }
-      return String(s).trim();
-    }).filter(s => s && s !== '[object Object]' && s.length > 0);
-  }
+      throw new Error(`Invalid suggestion format: ${JSON.stringify(s)}`);
+    })
+    .filter(s => s && s.length > 0);
 
   return match;
 };

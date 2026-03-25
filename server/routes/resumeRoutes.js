@@ -11,6 +11,14 @@ import {
 
 const router = express.Router();
 
+// Middleware to extend timeout for analyze endpoint (AI might take 15-30+ seconds)
+const extendTimeoutForAnalysis = (req, res, next) => {
+  // Tell the socket to wait longer for the analyze endpoint
+  req.setTimeout(120000); // 120 seconds for analysis
+  res.setTimeout(120000);
+  next();
+};
+
 /**
  * @swagger
  * /api/resume/upload:
@@ -57,7 +65,7 @@ router.post('/upload', protect, upload.single('file'), createResume);
  *       404:
  *         description: Resume not found
  */
-router.post('/analyze/:resumeId', protect, analyzeResumeController);
+router.post('/analyze/:resumeId', protect, extendTimeoutForAnalysis, analyzeResumeController);
 
 /**
  * @swagger
