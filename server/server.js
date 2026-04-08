@@ -26,7 +26,8 @@ app.use(helmet());
 // CORS configuration
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:3000',
+    // origin: process.env.CLIENT_URL || 'http://localhost:3000',
+        origin: 'https://ai-powered-resume-analyzer-six.vercel.app',
     credentials: true,
   })
 );
