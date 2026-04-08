@@ -82,6 +82,11 @@ const server = app.listen(PORT, () => {
   console.log(`🏥 Health check at http://localhost:${PORT}/health`);
 });
 
+// Configure socket timeout for long-running requests (AI analysis can take 15-30+ seconds)
+// Disable default 2-minute timeout on HTTP requests
+server.timeout = 240000; // 4 minutes - enough for AI analysis + buffer
+server.keepAliveTimeout = 65000; // Keep-alive timeout slightly higher than server timeout
+
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (err) => {
   console.error('Unhandled Rejection:', err);

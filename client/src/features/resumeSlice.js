@@ -17,12 +17,59 @@ export const uploadResume = createAsyncThunk('resume/upload', async (file, { rej
 });
 
 export const analyzeResume = createAsyncThunk('resume/analyze', async (resumeId, { rejectWithValue }) => {
-  try {
-    const response = await api.post(`/resume/analyze/${resumeId}`);
-    return response.data.resume;
-  } catch (error) {
-    return rejectWithValue(error.response?.data?.message || 'Analysis failed');
+  const maxRetries = 3;
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[Analysis] Attempt ${attempt}/${maxRetries} for resume ${resumeId}`);
+      
+      // Use extended timeout for analysis (up to 120 seconds)
+      // Analysis can take 15-30+ seconds with AI APIs
+      const response = await api.post(`/resume/analyze/${resumeId}`, {}, {
+        timeout: 120000, // 120 seconds - AI analysis needs this much time
+      });
+      
+      console.log('[Analysis] ✓ Success on attempt', attempt);
+      return response.data.resume;
+    } catch (error) {
+      lastError = error;
+      const isTimeoutError = error.code === 'ECONNABORTED' || error.message.includes('timeout');
+      const isNetworkError = !error.response; // No response from server
+      const isServerError = error.response?.status >= 500;
+      const isClientError = error.response?.status >= 400 && error.response?.status < 500;
+
+      console.error(`[Analysis] Attempt ${attempt} failed:`, {
+        isTimeout: isTimeoutError,
+        isNetwork: isNetworkError,
+        status: error.response?.status,
+        message: error.message,
+      });
+
+      // Don't retry on client errors (400-499) like 404, 401
+      if (isClientError) {
+        console.log('[Analysis] ✗ Client error - not retrying');
+        const errorMsg = error.response?.data?.message || error.message;
+        return rejectWithValue(`Analysis failed: ${errorMsg}`);
+      }
+
+      // For timeout/network/server errors, retry if we have attempts left
+      if (attempt < maxRetries) {
+        const waitTime = Math.pow(2, attempt - 1) * 2000; // Exponential backoff: 2s, 4s, 8s
+        console.log(`[Analysis] Retrying in ${waitTime}ms...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        continue;
+      }
+    }
   }
+
+  // All retries exhausted
+  const errorMessage = lastError?.response?.data?.message || 
+                       lastError?.message || 
+                       'Analysis failed after multiple attempts';
+  
+  console.error('[Analysis] ✗ All retries failed:', errorMessage);
+  return rejectWithValue(errorMessage);
 });
 
 export const getResumes = createAsyncThunk('resume/getAll', async (_, { rejectWithValue }) => {

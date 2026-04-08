@@ -10,7 +10,7 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
   withCredentials: true,
-  timeout: 10000, // 10 second timeout
+  timeout: 90000, // 90 seconds - AI analysis needs more time (Groq/Gemini can take 15-30s)
 });
 
 /**
